@@ -1,0 +1,30 @@
+# Folder lingkungan virtual Python
+venv/
+.venv/
+env/
+.env
+
+# Cache dan file kompilasi Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# File spesifik IDE/Editor
+.vscode/
+.idea/
+
+# File konfigurasi dan rahasia Streamlit
+.streamlit/
+secrets.toml
+
+# File spesifik sistem operasi
+.DS_Store
+Thumbs.db
+
+# File log
+*.log
+
+# Opsional: Abaikan file data jika ukurannya besar
+# *.csv
+# *.parquet
