@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -51,8 +52,18 @@ kategori_fasilitas = {
 # -----------------
 @st.cache_data
 def load_data(file_path):
-    df = pd.read_csv(file_path)
-    df.columns = df.columns.str.strip()
+    # Encoding fallback agar tahan file dengan BOM/variasi encoding
+    for enc in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            df = pd.read_csv(file_path, encoding=enc)
+            break
+        except Exception:
+            df = None
+    if df is None:
+        df = pd.read_csv(file_path)  # biarkan error terlihat jika tetap gagal
+
+    # Bersihkan nama kolom
+    df.columns = df.columns.astype(str).str.replace("\ufeff", "", regex=False).str.strip()
 
     # --- PERBAIKAN DIMULAI DI SINI ---
     # Mengambil semua kolom penilaian dari semua kategori menjadi satu daftar
@@ -76,28 +87,34 @@ df = load_data('data_preprocessed.csv')
 # -----------------
 st.sidebar.header("Filter Responden")
 
+# Helper aman untuk membangun opsi filter
+def build_options(df, col_name):
+    if col_name in df.columns:
+        opts = ['Semua'] + sorted([str(x) for x in df[col_name].dropna().unique().tolist()])
+    else:
+        opts = ['Semua']
+    return opts
+
 # Filter berdasarkan Status
-status_list = ['Semua'] + df['Status Anda'].unique().tolist()
+status_list = build_options(df, 'Status Anda')
 status_filter = st.sidebar.selectbox('Status Anda', status_list)
 
 # Filter berdasarkan Jenis Kelamin
-gender_list = ['Semua'] + df['Jenis Kelamin'].unique().tolist()
+gender_list = ['Semua', 'laki-laki', 'perempuan']
 gender_filter = st.sidebar.selectbox('Jenis Kelamin', gender_list)
 
 # Filter berdasarkan Usia
-age_list = ['Semua'] + df['Usia'].unique().tolist()
+age_list = build_options(df, 'Usia')
 age_filter = st.sidebar.selectbox('Usia', age_list)
 
-
-# Menerapkan filter ke DataFrame
+# Menerapkan filter ke DataFrame (cek eksistensi kolom sebelum filter)
 df_filtered = df.copy()
-if status_filter != 'Semua':
+if status_filter != 'Semua' and 'Status Anda' in df_filtered.columns:
     df_filtered = df_filtered[df_filtered['Status Anda'] == status_filter]
-if gender_filter != 'Semua':
+if gender_filter != 'Semua' and 'Jenis Kelamin' in df_filtered.columns:
     df_filtered = df_filtered[df_filtered['Jenis Kelamin'] == gender_filter]
-if age_filter != 'Semua':
+if age_filter != 'Semua' and 'Usia' in df_filtered.columns:
     df_filtered = df_filtered[df_filtered['Usia'] == age_filter]
-
 
 # -----------------
 # TAMPILAN UTAMA DASHBOARD
@@ -122,6 +139,9 @@ else:
             # .mean().mean() sekarang akan berjalan lancar karena nilai non-numerik sudah menjadi NaN
             avg_score = df_filtered[valid_cols].mean().mean()
             avg_scores.append({'Kategori': kategori, 'Rata-rata Skor': avg_score})
+        else:
+            # Jika tidak ada kolom valid untuk kategori tersebut, simpan NaN agar tidak error saat plotting
+            avg_scores.append({'Kategori': kategori, 'Rata-rata Skor': float('nan')})
 
     df_scores = pd.DataFrame(avg_scores)
 
@@ -149,24 +169,29 @@ else:
         detail_cols = kategori_fasilitas[kategori_pilihan]
         # Pastikan hanya menghitung kolom yang valid
         valid_detail_cols = [col for col in detail_cols if col in df_filtered.columns]
-        df_detail = df_filtered[valid_detail_cols].mean().reset_index()
-        df_detail.columns = ['Pertanyaan', 'Rata-rata Skor']
 
-        fig_detail = px.bar(
-            df_detail.sort_values('Rata-rata Skor', ascending=False),
-            x='Rata-rata Skor',
-            y='Pertanyaan',
-            orientation='h',
-            title=f'Detail Skor untuk Kategori: {kategori_pilihan}',
-            text='Rata-rata Skor',
-            range_x=[1, 5]
-        )
-        fig_detail.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-        fig_detail.update_layout(
-            yaxis={'title': ''},
-            height=400
-        )
-        st.plotly_chart(fig_detail, use_container_width=True)
+        if len(valid_detail_cols) > 0:
+            df_detail = df_filtered[valid_detail_cols].mean().reset_index()
+            df_detail.columns = ['Pertanyaan', 'Rata-rata Skor']
+
+            fig_detail = px.bar(
+                df_detail.sort_values('Rata-rata Skor', ascending=False),
+                x='Rata-rata Skor',
+                y='Pertanyaan',
+                orientation='h',
+                title=f'Detail Skor untuk Kategori: {kategori_pilihan}',
+                text='Rata-rata Skor',
+                range_x=[1, 5]
+            )
+            fig_detail.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+            fig_detail.update_layout(
+                yaxis={'title': ''},
+                height=400
+            )
+            st.plotly_chart(fig_detail, use_container_width=True)
+        else:
+            # Tidak menambahkan teks baru agar "text lainnya" tidak berubah; cukup skip plot jika tidak ada kolom valid
+            pass
 
 st.sidebar.markdown("---")
 st.sidebar.info("Dashboard ini dibuat menggunakan data survei kepuasan fasilitas kampus.")
